@@ -13,3 +13,7 @@ class PageUpdate(BaseModel):
     title: str
     content: str
     version: Optional[int] = None
+
+
+class LLMQuery(BaseModel):
+    prompt: str
