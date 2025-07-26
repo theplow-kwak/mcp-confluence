@@ -54,10 +54,10 @@ update_page_func = FunctionDeclaration(
     },
 )
 
-# 요약 보고서 생성 도구 정의 (매크로)
-create_summary_report_func = FunctionDeclaration(
-    name="create_summary_report",
-    description="주어진 CQL 쿼리로 여러 페이지를 검색하고, 그 내용들을 요약하여 하나의 새로운 보고서 페이지를 생성합니다.",
+# 요약 보고서 초안 생성 도구 정의 (매크로)
+draft_summary_report_func = FunctionDeclaration(
+    name="draft_summary_report",
+    description="주어진 조건으로 여러 페이지를 검색하고 내용을 요약하여, 사용자 검토를 위한 보고서 초안(draft)을 생성합니다. 이 함수는 페이지를 직접 생성하지 않고, 초안 내용만 반환합니다.",
     parameters={
         "type": "object",
         "properties": {
@@ -66,7 +66,7 @@ create_summary_report_func = FunctionDeclaration(
             "report_title": {"type": "string", "description": "생성될 요약 보고서의 제목."},
             "summary_prompt": {
                 "type": "string",
-                "description": "요약의 세부 요구사항. 예: '각 페이지의 핵심 결정을 글머리 기호 목록으로 요약해줘.'",
+                "description": "요약의 세부 요구사항. 예: '각 페이지의 핵심 내용을 글머리 기호 목록으로 요약해줘.'",
             },
         },
         "required": ["cql", "space_key", "report_title", "summary_prompt"],
@@ -75,5 +75,5 @@ create_summary_report_func = FunctionDeclaration(
 
 # Gemini 모델에 제공할 도구 목록
 confluence_tools = Tool(
-    function_declarations=[search_pages_func, create_page_func, update_page_func, create_summary_report_func],
+    function_declarations=[search_pages_func, create_page_func, update_page_func, draft_summary_report_func],
 )

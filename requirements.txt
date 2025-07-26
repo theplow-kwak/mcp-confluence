@@ -4,3 +4,4 @@ httpx
 pydantic-settings
 requests
 google-generativeai
+openai

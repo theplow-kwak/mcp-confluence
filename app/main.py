@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Depends, Response, status
 from typing import Optional
 
-from app.models.confluence_models import PageCreate, PageUpdate
-from app.services.confluence_service import ConfluenceService, confluence_service
+from app.models.confluence_models import PageCreate, PageUpdate, LLMQuery, PagePublish
+from app.services.confluence_service import confluence_service, ConfluenceService
+from app.services.base_service import BaseLLMService
+from app.services.llm_factory import get_llm_service
 
 app = FastAPI(
     title="MCP Server for Confluence",
@@ -18,6 +20,17 @@ async def read_root():
 @app.post("/pages", status_code=201)
 async def create_confluence_page(page: PageCreate, service: ConfluenceService = Depends(lambda: confluence_service)):
     """새로운 Confluence 페이지를 생성합니다."""
+    created_page = await service.create_page(page)
+    return created_page
+
+
+@app.post("/pages/publish", status_code=201, summary="Publish Draft Page")
+async def publish_confluence_page(page_data: PagePublish, service: ConfluenceService = Depends(lambda: confluence_service)):
+    """
+    게시할 페이지 데이터를 받아 Confluence 페이지를 생성합니다.
+    (LLM이 생성한 초안을 사용자가 확인 후 게시할 때 사용)
+    """
+    page = PageCreate(space_key=page_data.space_key, title=page_data.title, content=page_data.content)
     created_page = await service.create_page(page)
     return created_page
 
@@ -50,3 +63,16 @@ async def delete_confluence_page(page_id: str, service: ConfluenceService = Depe
     """ID로 특정 Confluence 페이지를 삭제합니다."""
     await service.delete_page(page_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/llm/execute")
+async def execute_llm_task(query: LLMQuery, service: BaseLLMService = Depends(get_llm_service)):
+    """
+    LLM을 사용하여 자연어 명령을 처리합니다.
+    
+    - 일반적인 질문에는 텍스트로 답변합니다.
+    - 보고서 생성 요청 시에는, 검토를 위한 'report_draft' 객체를 반환할 수 있습니다.
+    - `session_id`를 포함하여 연속적인 대화를 할 수 있습니다. 첫 요청 시 `session_id`는 생략합니다.
+    """
+    result = await service.process_query(query.prompt, query.session_id)
+    return result

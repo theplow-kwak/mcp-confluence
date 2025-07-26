@@ -17,3 +17,10 @@ class PageUpdate(BaseModel):
 
 class LLMQuery(BaseModel):
     prompt: str
+    session_id: Optional[str] = None
+
+
+class PagePublish(BaseModel):
+    space_key: str
+    title: str
+    content: str
