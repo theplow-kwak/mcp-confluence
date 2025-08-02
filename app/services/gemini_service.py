@@ -9,9 +9,9 @@ class GeminiService(BaseLLMService):
     Google Gemini 모델을 사용하여 LLM 기능을 제공하는 서비스.
     """
     def __init__(self):
-        if not settings.google_api_key:
+        if not settings.GOOGLE_API_KEY:
             raise ValueError("Google API key is not set in the environment.")
-        genai.configure(api_key=settings.google_api_key)
+        genai.configure(api_key=settings.GOOGLE_API_KEY)
         self.model = genai.GenerativeModel('gemini-1.5-flash') # 최신 모델 사용
         # TODO: 세션 관리를 위한 chat 객체 구현 (여기서는 간단한 예시)
         self.chat_sessions = {}

@@ -9,9 +9,9 @@ class OpenAIService(BaseLLMService):
     OpenAI 모델을 사용하여 LLM 기능을 제공하는 서비스.
     """
     def __init__(self):
-        if not settings.openai_api_key:
+        if not settings.OPENAI_API_KEY:
             raise ValueError("OpenAI API key is not set in the environment.")
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = "gpt-4o"  # 최신 모델 사용
 
     async def process_query(self, prompt: str, session_id: Optional[str] = None) -> Dict[str, Any]:
