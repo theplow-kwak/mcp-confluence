@@ -1,80 +1,70 @@
-import requests
-import datetime
+import os
 import sys
+import asyncio
+from dotenv import load_dotenv
 
-# --- 설정 ---
-MCP_SERVER_URL = "http://127.0.0.1:8000"
-TARGET_LABEL = "auto-update"  # 검색할 라벨
-UPDATE_MESSAGE = f"\n<p><em>(이 페이지는 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}에 자동 스크립트로 업데이트되었습니다.)</em></p>"
-# --- 설정 끝 ---
+# 프로젝트 루트 경로를 sys.path에 추가
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-def search_pages_by_label(label: str) -> list:
-    """MCP 서버를 통해 특정 라벨을 가진 페이지를 검색합니다."""
-    print(f"'{label}' 라벨을 가진 페이지를 검색합니다...")
-    cql = f'label="{label}"'
-    # 업데이트를 위해 본문(body)과 버전(version) 정보를 함께 요청합니다.
-    expand = "body.storage,version"
-    
-    try:
-        response = requests.get(
-            f"{MCP_SERVER_URL}/pages/search",
-            params={"cql": cql, "expand": expand}
-        )
-        response.raise_for_status()
-        
-        data = response.json()
-        pages = data.get("results", [])
-        
-        if not pages:
-            print("결과: 해당 라벨을 가진 페이지를 찾을 수 없습니다.")
-            return []
-            
-        print(f"결과: {len(pages)}개의 페이지를 찾았습니다.")
-        return pages
-        
-    except requests.exceptions.RequestException as e:
-        print(f"오류: MCP 서버에 연결할 수 없습니다. ({e})")
-        sys.exit(1)
+from app.services.confluence_service import ConfluenceService
+from app.services.llm_factory import get_llm_service
+from app.models.confluence_models import PageUpdate
 
-def update_page_content(page_id: str, title: str, current_content: str, version: int):
-    """MCP 서버를 통해 페이지 내용을 업데이트합니다."""
-    print(f"  -> 페이지 ID {page_id} ('{title}') 업데이트 중...")
+async def main(label: str, prompt: str):
+    """
+    지정된 레이블을 가진 모든 Confluence 페이지를 찾아 LLM으로 내용을 비동기적으로 업데이트합니다.
+    """
+    load_dotenv()
     
-    new_content = current_content + UPDATE_MESSAGE
-    payload = {
-        "title": title,
-        "content": new_content,
-        "version": version
-    }
-    
-    try:
-        response = requests.put(
-            f"{MCP_SERVER_URL}/pages/{page_id}",
-            json=payload
-        )
-        response.raise_for_status()
-        print(f"  -> 성공: 페이지가 성공적으로 업데이트되었습니다.")
-        
-    except requests.exceptions.HTTPError as e:
-        print(f"  -> 실패: 페이지 업데이트 중 오류 발생 (상태 코드: {e.response.status_code})")
-        print(f"     응답: {e.response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"  -> 실패: MCP 서버 통신 오류 ({e})")
+    confluence_service = ConfluenceService()
+    llm_service = get_llm_service()
 
-def main():
-    """메인 실행 함수"""
-    pages_to_update = search_pages_by_label(TARGET_LABEL)
-    
-    if not pages_to_update:
+    print(f"'{label}' 레이블을 가진 페이지를 검색합니다...")
+    # CQL을 사용하여 레이블로 페이지 검색
+    pages = await confluence_service.search_pages(cql=f"label='{label}'")
+
+    if not pages:
+        print("해당 레이블을 가진 페이지를 찾을 수 없습니다.")
         return
 
-    for page in pages_to_update:
-        update_page_content(
-            page['id'],
-            page['title'],
-            page['body']['storage']['value'],
-            page['version']['number']
-        )
+    print(f"{len(pages)}개의 페이지를 찾았습니다. 내용을 업데이트합니다.")
+
+    for page_summary in pages:
+        page_id = page_summary['id']
+        title = page_summary['title']
+        
+        print(f"  - '{title}' (ID: {page_id}) 페이지 업데이트 중...")
+        
+        # 현재 페이지의 전체 정보를 가져옵니다. (본문 내용 포함)
+        current_page = await confluence_service.get_page(page_id, expand="body.storage,version")
+        current_content = current_page['body']['storage']['value']
+        
+        # LLM을 사용하여 새 콘텐츠 생성
+        # llm_service.process_query가 비동기이므로 await 사용
+        full_prompt = f"{prompt}\n\n---\n\n기존 내용:\n{current_content}"
+        llm_response = await llm_service.process_query(full_prompt)
+        new_content = llm_response.get("response", "") # 응답 형식에 따라 수정 필요
+
+        if not new_content:
+            print(f"    ...LLM으로부터 유효한 콘텐츠를 받지 못해 건너뜁니다.")
+            continue
+        
+        # 페이지 업데이트 모델 생성
+        update_data = PageUpdate(title=title, content=new_content)
+        
+        # 페이지 업데이트 (update_page가 비동기이므로 await 사용)
+        await confluence_service.update_page(page_id, update_data)
+        
+        print(f"    ...완료.")
+
+    print("\n모든 페이지 업데이트가 완료되었습니다.")
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 3:
+        print("사용법: python update_pages_by_label.py <label> <prompt>")
+        sys.exit(1)
+    
+    label_arg = sys.argv[1]
+    prompt_arg = sys.argv[2]
+    # 비동기 main 함수 실행
+    asyncio.run(main(label_arg, prompt_arg))
